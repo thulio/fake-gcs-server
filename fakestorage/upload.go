@@ -5,6 +5,8 @@
 package fakestorage
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/md5" // #nosec G501
 	"crypto/rand"
 	"encoding/base64"
@@ -388,8 +390,24 @@ func parseContentRange(r string) (parsed contentRange, err error) {
 func loadMetadata(rc io.ReadCloser) (*multipartMetadata, error) {
 	defer rc.Close()
 	var m multipartMetadata
-	err := json.NewDecoder(rc).Decode(&m)
-	return &m, err
+
+	data, errRead := ioutil.ReadAll(rc)
+
+	if errRead != nil {
+		return &m, errRead
+	}
+	rs := bytes.NewReader(data)
+
+	gReader, errGzip := gzip.NewReader(rs)
+
+	if errGzip != nil {
+		rs.Seek(0, 0)
+		errJSON := json.NewDecoder(rs).Decode(&m)
+		return &m, errJSON
+	}
+
+	errJSON := json.NewDecoder(gReader).Decode(&m)
+	return &m, errJSON
 }
 
 func loadContent(rc io.ReadCloser) ([]byte, error) {
